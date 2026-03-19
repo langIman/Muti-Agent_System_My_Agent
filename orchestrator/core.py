@@ -27,6 +27,8 @@ def should_continue(state) -> str:
         return "next_step"
     # 如果当前计划执行完了但没触发 task_complete，说明任务还未完成，回 plan 继续规划
     return "replan"
+    # 如果当前计划执行完了但没触发 task_complete，说明任务还未完成，回 plan 继续规划
+    return "replan"
 
 
 
