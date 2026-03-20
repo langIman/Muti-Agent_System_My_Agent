@@ -15,6 +15,9 @@ data/strategies.json
 # IDE 配置
 .vscode/
 
+# 评估结果
+eval/results/
+
 # 环境变量
 .env*
 

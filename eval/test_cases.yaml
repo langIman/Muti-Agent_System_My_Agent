@@ -1,0 +1,142 @@
+cases:
+  # ===== 纯对话 =====
+  - id: "conversation_greeting"
+    category: "conversation"
+    input: "你好，你是谁？"
+    expect:
+      perceiver:
+        needs_tools: []
+      planner:
+        max_steps: 1
+        last_tool_in: ["reply_user"]
+      end_to_end:
+        max_replans: 1
+        has_reply: true
+    judge:
+      task_fulfillment: ">=3"
+
+  - id: "conversation_question"
+    category: "conversation"
+    input: "Python 中 list 和 tuple 有什么区别？"
+    expect:
+      perceiver:
+        needs_tools: []
+      planner:
+        max_steps: 1
+        last_tool_in: ["reply_user"]
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=3"
+      response_quality: ">=3"
+
+  # ===== 简单工具任务 =====
+  - id: "simple_read_file"
+    category: "simple_tool"
+    input: "读取 /tmp/eval_test_file.txt 的内容"
+    setup:
+      - "echo '这是评估测试文件的内容' > /tmp/eval_test_file.txt"
+    teardown:
+      - "rm -f /tmp/eval_test_file.txt"
+    expect:
+      perceiver:
+        needs_tools_contains: ["read_file"]
+      planner:
+        contains_tool: "read_file"
+        last_tool_in: ["reply_user", "task_complete"]
+      executor:
+        no_errors: true
+      end_to_end:
+        has_reply: true
+        reply_contains: "评估测试文件"
+    judge:
+      task_fulfillment: ">=4"
+
+  - id: "simple_list_dir"
+    category: "simple_tool"
+    input: "列出 /tmp 目录下有哪些文件"
+    expect:
+      perceiver:
+        needs_tools_contains: ["list_directory"]
+      planner:
+        contains_tool: "list_directory"
+        last_tool_in: ["reply_user", "task_complete"]
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=3"
+
+  # ===== 多步骤任务 =====
+  - id: "multi_step_find_read"
+    category: "multi_step"
+    input: "找到项目中的 config.py 文件，读取内容，告诉我 MODEL_NAME 的默认值是什么"
+    expect:
+      planner:
+        min_steps: 2
+        last_tool_in: ["reply_user", "task_complete"]
+      end_to_end:
+        has_reply: true
+        reply_contains: "gpt-4o"
+    judge:
+      task_fulfillment: ">=4"
+
+  - id: "multi_step_search_write"
+    category: "multi_step"
+    input: "帮我在 /tmp 目录下创建一个文件 eval_output.txt，内容写上当前日期和 Hello World"
+    teardown:
+      - "rm -f /tmp/eval_output.txt"
+    expect:
+      planner:
+        contains_tool: "write_file"
+        last_tool_in: ["reply_user", "task_complete"]
+      executor:
+        no_errors: true
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=3"
+
+  # ===== 模糊/需澄清 =====
+  - id: "ambiguous_modify"
+    category: "ambiguous"
+    input: "改一下那个文件"
+    expect:
+      planner:
+        last_tool_in: ["reply_user"]
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=2"
+
+  - id: "ambiguous_vague"
+    category: "ambiguous"
+    input: "帮我弄一下"
+    expect:
+      planner:
+        last_tool_in: ["reply_user"]
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=2"
+
+  # ===== 错误恢复 =====
+  - id: "error_nonexistent_file"
+    category: "error_recovery"
+    input: "读取 /this/path/does/not/exist.txt 的内容"
+    expect:
+      end_to_end:
+        max_replans: 3
+        has_reply: true
+    judge:
+      task_fulfillment: ">=2"
+
+  - id: "error_python_exec"
+    category: "error_recovery"
+    input: "用 Python 计算 1/0 的结果"
+    expect:
+      planner:
+        contains_tool: "execute_python"
+      end_to_end:
+        has_reply: true
+    judge:
+      task_fulfillment: ">=2"

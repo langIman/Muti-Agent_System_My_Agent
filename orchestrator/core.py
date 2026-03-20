@@ -40,6 +40,13 @@ def should_continue(state) -> str:
 
 
 
+def plan_router(state) -> str:
+    """空计划（如简单问候）直接跳到 learn，不进 Executor"""
+    if not state.get("plan"):
+        return "learn"
+    return "execute"
+
+
 def build_graph():
     graph = StateGraph(AgentState)
 
@@ -52,7 +59,10 @@ def build_graph():
     graph.set_entry_point("perceive")
     graph.add_edge("perceive", "recall")
     graph.add_edge("recall", "plan")
-    graph.add_edge("plan", "execute")
+    graph.add_conditional_edges("plan", plan_router, {
+        "execute": "execute",
+        "learn": "learn",
+    })
     graph.add_conditional_edges("execute", should_continue, {
         "next_step": "execute",
         "replan": "plan",
