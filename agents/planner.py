@@ -16,8 +16,8 @@ class PlannerAgent(BaseAgent):
                 "5. 对于复杂的修改文件任务，典型流程是: find_file 找路径 → read_file 读内容 → write_file 写入内容。\n"
                 "6. 🏁**任务结束判定**🏁：如果你确认用户的原始指令已经**完全执行成功、没有任何遗漏**（比如文件已经真正被修改了），你**必须**生成1步计划，使用 `task_complete` 工具结束整个会话！\n\n"
                 "## 可用工具\n"
-                "- web_search: 搜索互联网\n"
-                "- execute_python: 执行 Python 代码\n"
+                "- web_search: 搜索互联网（关键词要简洁，不要用 site: 限定符，那样容易搜不到结果）\n"
+                "- execute_python: 执行 Python 代码（独立环境，无法访问其他步骤的变量）\n"
                 "- read_file: 读取文件\n"
                 "- write_file: 写入文件\n"
                 "- list_directory: 列出目录（仅第一层）\n"
@@ -25,6 +25,11 @@ class PlannerAgent(BaseAgent):
                 "- api_call: 调用 HTTP API\n"
                 "- reply_user: 用于向用户提问、澄清意图，或当任务根本无法进行时给用户解释。\n"
                 "- task_complete: 当所有步骤都已完成、真正的文件已被修改或动作已执行完毕时调用，结束任务。\n\n"
+                "## ⚠️ 工具间数据传递规则（极其重要，违反会导致任务失败）\n"
+                "**严禁在 web_search 之后使用 execute_python 处理搜索结果！这会导致 NameError 崩溃！**\n"
+                "**严禁在任何工具之后使用 execute_python 引用前面工具的返回值！每个 execute_python 都是独立沙箱！**\n"
+                "正确的搜索+写入流程：web_search → write_file（Executor 会自动根据搜索结果构造文件内容）\n"
+                "execute_python 仅用于独立计算（如数学运算），绝不用于处理其他步骤的输出\n\n"
                 "## 🚨 绝对规则\n"
                 "**每个计划的最后一步必须是 `reply_user` 或 `task_complete`**。没有例外。如果你的计划最后一步不是这两个工具之一，系统会陷入死循环。\n"
             ),
@@ -55,4 +60,4 @@ class PlannerAgent(BaseAgent):
             tool_name = step.get("tool", "?")
             print(f"  \033[33m  📋 步骤 {i+1}: [{tool_name}] {action}\033[0m")
 
-        return {"messages": [result], "plan": plan, "current_step": 0}
+        return {"messages": [], "plan": plan, "current_step": 0, "replan_count": state.get("replan_count", 0) + 1}

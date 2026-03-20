@@ -11,3 +11,5 @@ MEMORY_WINDOW_SIZE = 20
 RETRIEVER_TOP_K = 5
 EPISODIC_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "episodic.db")
 EPISODIC_SEARCH_LIMIT = 5
+STRATEGY_STORE_PATH = os.path.join(os.path.dirname(__file__), "data", "strategies.json")
+PROMPT_PATCHES_PATH = os.path.join(os.path.dirname(__file__), "data", "prompt_patches.json")

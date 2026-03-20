@@ -1,8 +1,8 @@
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from config import MODEL_NAME, OPENAI_BASE_URL, OPENAI_API_KEY
-#testtesttest
+from config import MODEL_NAME, OPENAI_BASE_URL, OPENAI_API_KEY, PROMPT_PATCHES_PATH
+from learning.prompt_optimizer import PromptOptimizer
 
 # ANSI 颜色
 COLORS = {
@@ -39,6 +39,15 @@ class BaseAgent:
             base_url=OPENAI_BASE_URL,
             api_key=OPENAI_API_KEY,
         )
+        # 加载 Prompt Patches 动态增强 system prompt
+        optimizer = PromptOptimizer(path=PROMPT_PATCHES_PATH)
+        patches = optimizer.get_patches(name)
+        if patches:
+            # 转义大括号，防止 LangChain 将其解析为模板变量
+            patch_text = "\n".join(f"- {p}" for p in patches)
+            patch_text = patch_text.replace("{", "{{").replace("}", "}}")
+            system_prompt += f"\n\n## 历史改进建议（基于过往执行经验）\n{patch_text}"
+
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("placeholder", "{messages}"),

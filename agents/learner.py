@@ -1,6 +1,8 @@
 from agents.base import BaseAgent, parse_json, agent_log
 from memory.episodic import EpisodicMemory
-from config import EPISODIC_DB_PATH
+from learning.strategy_store import StrategyStore
+from learning.prompt_optimizer import PromptOptimizer
+from config import EPISODIC_DB_PATH, STRATEGY_STORE_PATH, PROMPT_PATCHES_PATH
 
 
 class LearnerAgent(BaseAgent):
@@ -12,12 +14,24 @@ class LearnerAgent(BaseAgent):
                 "分析任务执行过程，提取：\n"
                 "1. 成功策略（可复用的模式）\n"
                 "2. 失败教训（应避免的做法）\n"
-                "输出 JSON: {{\"lessons\": [\"用一句话总结的经验1\", \"用一句话总结的经验2\"], \"summary\": \"整体复盘总结\"}}\n"
-                "注意：lessons 数组里只能是总结性的文本，绝对不能包含具体的操作步骤或 API 调用！"
+                "3. 如果发现某个 Agent 的 prompt 可以改进，给出改进建议\n"
+                "输出 JSON:\n"
+                "{{\n"
+                "  \"lessons\": [\"用一句话总结的经验1\", \"用一句话总结的经验2\"],\n"
+                "  \"summary\": \"整体复盘总结\",\n"
+                "  \"strategy\": \"如果有可复用的成功策略，用一句话描述；没有则为空字符串\",\n"
+                "  \"prompt_patch\": {{\"agent_name\": \"需要改进的Agent名称(Perceiver/Planner/Executor)\", \"patch\": \"具体的prompt改进建议\"}}\n"
+                "}}\n"
+                "注意：\n"
+                "- lessons 数组里只能是总结性的文本，绝对不能包含具体的操作步骤或 API 调用！\n"
+                "- strategy 只提取真正有复用价值的策略，普通任务可以为空字符串\n"
+                "- prompt_patch 只在确实发现 prompt 有明显缺陷时才填写，否则不包含该字段"
             ),
         )
         self.memory = memory_agent
         self.episodic = EpisodicMemory(db_path=EPISODIC_DB_PATH)
+        self.strategy_store = StrategyStore(path=STRATEGY_STORE_PATH)
+        self.prompt_optimizer = PromptOptimizer(path=PROMPT_PATCHES_PATH)
 
     def __call__(self, state):
         agent_log("Learner", "分析执行过程，提取经验...")
@@ -47,6 +61,18 @@ class LearnerAgent(BaseAgent):
         if summary:
             agent_log("Learner", "任务总结", summary)
 
+        # --- 写入策略存储 ---
+        strategy = lessons.get("strategy", "")
+        if strategy:
+            self.strategy_store.add({"strategy": strategy, "task": state.get("context", {}).get("intent", "")})
+            agent_log("Learner", "策略已存储", strategy[:100])
+
+        # --- 写入 Prompt 改进建议 ---
+        prompt_patch = lessons.get("prompt_patch", {})
+        if isinstance(prompt_patch, dict) and prompt_patch.get("agent_name") and prompt_patch.get("patch"):
+            self.prompt_optimizer.add_patch(prompt_patch["agent_name"], prompt_patch["patch"])
+            agent_log("Learner", "Prompt改进建议已存储", f"{prompt_patch['agent_name']}: {prompt_patch['patch'][:100]}")
+
         # --- 写入情景记忆 ---
         task_desc = state.get("context", {}).get("intent", "")
         if not task_desc:
@@ -63,4 +89,4 @@ class LearnerAgent(BaseAgent):
         except Exception as e:
             agent_log("Learner", "情景记忆写入失败", str(e))
 
-        return {"messages": [result], "feedback": lessons}
+        return {"messages": [], "feedback": lessons}
