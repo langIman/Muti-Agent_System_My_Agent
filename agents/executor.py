@@ -22,8 +22,20 @@ class ExecutorAgent(BaseAgent):
         self.chain = self.prompt | self.llm
 
     def __call__(self, state):
-        step = state["plan"][state["current_step"]]
-        agent_log("Executor", f"执行步骤 {state['current_step'] + 1}/{len(state['plan'])}", str(step))
+        plan = state.get("plan", [])
+        idx = state.get("current_step", 0)
+        if idx >= len(plan):
+            agent_log("Executor", "⚠️ 无可执行步骤，跳过")
+            return {
+                "messages": [],
+                "current_step": idx,
+                "tool_results": state.get("tool_results", []) + [
+                    {"step": idx, "tool": "reply_user", "result": "计划已执行完毕，无更多步骤。", "content": ""}
+                ],
+            }
+
+        step = plan[idx]
+        agent_log("Executor", f"执行步骤 {idx + 1}/{len(plan)}", str(step))
 
         # 构建干净的消息：用户原始输入 + 前面步骤的结果摘要 + 当前步骤指令
         # 不使用 state["messages"]，避免累积的 tool_calls 消息导致 API 格式校验失败

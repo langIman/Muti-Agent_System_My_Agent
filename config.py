@@ -9,6 +9,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 CHROMA_DIR = os.path.join(os.path.dirname(__file__), "data", "chroma")
 MEMORY_WINDOW_SIZE = 20
 RETRIEVER_TOP_K = 5
+RELEVANCE_THRESHOLD = 0.35  # Chroma 余弦相似度阈值，低于此视为噪声
 EPISODIC_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "episodic.db")
 EPISODIC_SEARCH_LIMIT = 5
 STRATEGY_STORE_PATH = os.path.join(os.path.dirname(__file__), "data", "strategies.json")

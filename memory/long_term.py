@@ -1,6 +1,6 @@
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from config import CHROMA_DIR, RETRIEVER_TOP_K, OPENAI_API_KEY, OPENAI_BASE_URL
+from config import CHROMA_DIR, RETRIEVER_TOP_K, OPENAI_API_KEY, OPENAI_BASE_URL, RELEVANCE_THRESHOLD
 
 
 class LongTermMemory:
@@ -15,11 +15,14 @@ class LongTermMemory:
             ),
             persist_directory=CHROMA_DIR,
         )
-        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": RETRIEVER_TOP_K})
 
     def retrieve(self, query: str) -> str:
-        docs = self.retriever.invoke(query)
-        return "\n".join(d.page_content for d in docs)
+        results = self.vectorstore.similarity_search_with_relevance_scores(
+            query, k=RETRIEVER_TOP_K
+        )
+        # 只保留相关性高于阈值的结果
+        filtered = [(doc, score) for doc, score in results if score >= RELEVANCE_THRESHOLD]
+        return "\n".join(doc.page_content for doc, _ in filtered)
 
     def store(self, text: str, metadata: dict = None):
         self.vectorstore.add_texts([text], metadatas=[metadata or {}])

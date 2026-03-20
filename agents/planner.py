@@ -10,7 +10,10 @@ class PlannerAgent(BaseAgent):
                 "## 规则\n"
                 "1. 输出 JSON 数组: [{{\"step\": 1, \"action\": \"...\", \"tool\": \"...\", \"params\": {{...}}}}]\n"
                 "2. 每步必须是可执行的原子操作。如果任务简单可以只有一步。\n"
-                "3. **尽可能一次性生成完整的计划**：包含所有必要的步骤（如找路径 -> 读内容 -> 写入修改）。只在\u201c必须先拿到前序结果，由于参数完全未知而无法编写下一步\u201d的极端情况下，才允许只生成 1 步并等待结果。\n"
+                "3. **计划模式选择**：\n"
+                "   - **完整计划**：当你有足够信息完成整个任务时，一次性生成所有步骤，最后一步使用 `reply_user` 或 `task_complete` 结束。\n"
+                "   - **探索计划**：当你需要先获取信息才能决定后续操作时（如不知道文件路径、不确定文件内容），只生成探索步骤（如 find_file、read_file），**不加终止工具**。系统会在执行完后自动回到你这里，届时你可以根据执行结果继续规划。\n"
+                "   选择原则：如果后续步骤的参数依赖前面步骤的结果且你无法预知，就用探索计划；否则用完整计划。\n"
                 "4. **澄清规则**：只有当用户的指令**完全无法理解或存在严重歧义导致无法开始任何行动**时，才使用 `reply_user` 向用户提问澄清。如果指令的意图是清晰的，即使缺少部分细节（如具体文件路径），你也应该先通过 `list_directory`、`find_file` 等工具自主探索和推断，而不是直接问用户。\n"
                 "5. **纯对话/问候场景**：当用户只是打招呼、闲聊或提问（不需要执行任何工具操作）时，直接生成 1 步计划，使用 `reply_user` 工具回复即可。\n"
                 "6. 对于复杂的修改文件任务，典型流程是: find_file 找路径 → read_file 读内容 → write_file 写入内容。\n"
@@ -30,8 +33,11 @@ class PlannerAgent(BaseAgent):
                 "**严禁在任何工具之后使用 execute_python 引用前面工具的返回值！每个 execute_python 都是独立沙箱！**\n"
                 "正确的搜索+写入流程：web_search → write_file（Executor 会自动根据搜索结果构造文件内容）\n"
                 "execute_python 仅用于独立计算（如数学运算），绝不用于处理其他步骤的输出\n\n"
-                "## 🚨 绝对规则\n"
-                "**每个计划的最后一步必须是 `reply_user` 或 `task_complete`**。没有例外。如果你的计划最后一步不是这两个工具之一，系统会陷入死循环。\n"
+                "## 🚨 终止规则\n"
+                "- **完整计划**的最后一步必须是 `reply_user` 或 `task_complete`。\n"
+                "- **探索计划**不需要终止工具，系统会在执行完后自动让你 replan。\n"
+                "- 任务最终一定要以 `reply_user` 或 `task_complete` 结束（可以在后续 replan 中添加）。\n"
+                "- 最多可以 replan 3 次，请合理利用每次机会。\n"
             ),
             use_messages=True,  # 需要通过 placeholder 传入定制的 messages
         )
@@ -58,7 +64,10 @@ class PlannerAgent(BaseAgent):
                 if result_text:
                     parts.append(f"[步骤{tr['step']+1}][{tool_name}] 结果: {str(result_text)[:2000]}")
             if parts:
-                plan_messages.append(("user", f"[前面步骤的执行结果]:\n" + "\n".join(parts) + "\n\n请根据以上结果重新规划后续步骤。"))
+                replan_count = state.get("replan_count", 0)
+                plan_messages.append(("user",
+                    f"[前面步骤的执行结果]:\n" + "\n".join(parts) +
+                    f"\n\n这是第 {replan_count + 1} 次规划（最多 3 次）。请根据以上结果规划后续步骤。如果任务已完成，用 task_complete 结束；如果还需要信息，继续探索。"))
             else:
                 plan_messages.append(("user", "请生成执行计划。"))
         else:
@@ -72,7 +81,7 @@ class PlannerAgent(BaseAgent):
         if isinstance(plan, dict):
             plan = plan.get("plan", [plan])
         if not isinstance(plan, list):
-            plan = [{"step": 1, "action": result.content, "tool": "none", "params": {}}]
+            plan = [{"step": 1, "action": "回复用户", "tool": "reply_user", "params": {"message": result.content}}]
 
         # 打印生成的计划
         agent_log("Planner", f"生成计划 ({len(plan)} 步)")

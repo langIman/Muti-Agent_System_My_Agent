@@ -35,13 +35,27 @@ class LearnerAgent(BaseAgent):
         self.strategy_store = StrategyStore(path=STRATEGY_STORE_PATH)
         self.prompt_optimizer = PromptOptimizer(path=PROMPT_PATCHES_PATH)
 
-    def __call__(self, state):
-        agent_log("Learner", "分析执行过程，提取经验...")
+    def _is_trivial_task(self, tool_results: list) -> bool:
+        """判断是否为简单任务（只有 reply_user/task_complete，无实质工具调用）"""
+        trivial_tools = {"reply_user", "task_complete", ""}
+        return all(tr.get("tool", "") in trivial_tools for tr in tool_results)
 
-        # 构建干净的消息 — 只注入执行上下文，不注入完整对话历史
+    def __call__(self, state):
         user_request = extract_user_request(state)
         plan = state.get("plan", [])
         tool_results = state.get("tool_results", [])
+
+        # 简单任务跳过 LLM 调用，只写情景记忆
+        if self._is_trivial_task(tool_results):
+            agent_log("Learner", "简单任务，跳过深度学习")
+            task_desc = state.get("context", {}).get("intent", user_request[:80])
+            try:
+                self.episodic.add(task=task_desc, result="简单对话/问答", lessons=[])
+            except Exception:
+                pass
+            return {"messages": [], "feedback": {"lessons": [], "summary": "简单任务，无需提取经验"}}
+
+        agent_log("Learner", "分析执行过程，提取经验...")
 
         learn_messages = [
             ("user",
