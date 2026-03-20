@@ -13,21 +13,29 @@ memory_agent = MemoryAgent(short_term=shared_short_term)
 learner_agent = LearnerAgent(memory_agent)
 
 
+MAX_REPLAN = 3
+
 def should_continue(state) -> str:
-    print(f"\n[DEBUG] current_step: {state['current_step']}, len(plan): {len(state['plan'])}")
+    replan_count = state.get("replan_count", 0)
+    print(f"\n[DEBUG] current_step: {state['current_step']}, len(plan): {len(state['plan'])}, replan_count: {replan_count}")
     if state["tool_results"]:
         last_tool = state["tool_results"][-1].get("tool", "")
         print(f"[DEBUG] last_tool: {last_tool}")
         if last_tool in ["task_complete", "reply_user"]:
             return "learn"
         if state["tool_results"][-1].get("error"):
+            if replan_count >= MAX_REPLAN:
+                print(f"[DEBUG] 已重规划 {replan_count} 次，强制结束")
+                return "learn"
             return "replan"
-            
+
     if state["current_step"] < len(state["plan"]):
         return "next_step"
-    # 如果当前计划执行完了但没触发 task_complete，说明任务还未完成，回 plan 继续规划
-    return "replan"
-    # 如果当前计划执行完了但没触发 task_complete，说明任务还未完成，回 plan 继续规划
+
+    # 计划执行完但没触发 task_complete，检查 replan 上限
+    if replan_count >= MAX_REPLAN:
+        print(f"[DEBUG] 已重规划 {replan_count} 次，强制结束")
+        return "learn"
     return "replan"
 
 

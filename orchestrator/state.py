@@ -12,3 +12,4 @@ class AgentState(TypedDict):
     short_term_context: str   # 短期记忆：最近对话上下文
     tool_results: list
     feedback: dict
+    replan_count: int

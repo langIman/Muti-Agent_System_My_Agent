@@ -2,7 +2,8 @@ from agents.base import BaseAgent, agent_log
 from memory.short_term import ShortTermMemory
 from memory.long_term import LongTermMemory
 from memory.episodic import EpisodicMemory
-from config import EPISODIC_DB_PATH, EPISODIC_SEARCH_LIMIT
+from learning.strategy_store import StrategyStore
+from config import EPISODIC_DB_PATH, EPISODIC_SEARCH_LIMIT, STRATEGY_STORE_PATH
 
 
 class MemoryAgent(BaseAgent):
@@ -11,6 +12,7 @@ class MemoryAgent(BaseAgent):
         self.short_term = short_term or ShortTermMemory()
         self.long_term = LongTermMemory()
         self.episodic = EpisodicMemory(db_path=EPISODIC_DB_PATH)
+        self.strategy_store = StrategyStore(path=STRATEGY_STORE_PATH)
 
     def __call__(self, state):
         query = state.get("context", {}).get("intent", "")
@@ -61,7 +63,18 @@ class MemoryAgent(BaseAgent):
         except Exception:
             episodic_result = ""
 
-        # --- 合并三层记忆结果 ---
+        # --- 策略检索：从 StrategyStore 中搜索相关策略 ---
+        strategy_result = ""
+        try:
+            if query:
+                strategies = self.strategy_store.search(query[:50])
+                if strategies:
+                    strategy_result = "\n".join(s.get("strategy", str(s)) for s in strategies[:3])
+                    agent_log("Memory", "策略命中", f"找到 {len(strategies)} 条相关策略")
+        except Exception:
+            strategy_result = ""
+
+        # --- 合并三层记忆结果 + 策略 ---
         sections = []
         if short_term_context:
             sections.append(f"[最近对话]\n{short_term_context}")
@@ -69,6 +82,8 @@ class MemoryAgent(BaseAgent):
             sections.append(f"[相关知识/经验]\n{long_term_result}")
         if episodic_result:
             sections.append(f"[历史任务记录]\n{episodic_result}")
+        if strategy_result:
+            sections.append(f"[成功策略]\n{strategy_result}")
 
         memory_result = "\n\n".join(sections) if sections else ""
 
@@ -78,6 +93,7 @@ class MemoryAgent(BaseAgent):
             agent_log("Memory", "无相关记忆")
 
         return {
+            "messages": [],
             "memory_result": memory_result,
             "short_term_context": short_term_context,
         }
