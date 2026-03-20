@@ -32,7 +32,14 @@ def agent_log(agent_name: str, message: str, detail: str = ""):
 
 
 class BaseAgent:
-    def __init__(self, name: str, system_prompt: str):
+    def __init__(self, name: str, system_prompt: str, use_messages: bool = True):
+        """
+        Args:
+            name: Agent 名称
+            system_prompt: 系统提示
+            use_messages: 是否在 prompt 模板中注入 {messages} 对话历史。
+                          只有需要读取对话上下文的 Agent 才设为 True。
+        """
         self.name = name
         self.llm = ChatOpenAI(
             model=MODEL_NAME,
@@ -48,15 +55,33 @@ class BaseAgent:
             patch_text = patch_text.replace("{", "{{").replace("}", "}}")
             system_prompt += f"\n\n## 历史改进建议（基于过往执行经验）\n{patch_text}"
 
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("placeholder", "{messages}"),
-        ])
+        template_messages = [("system", system_prompt)]
+        if use_messages:
+            template_messages.append(("placeholder", "{messages}"))
+        self.prompt = ChatPromptTemplate.from_messages(template_messages)
         self.chain = self.prompt | self.llm
 
     def __call__(self, state: dict) -> dict:
         response = self.chain.invoke(state)
         return {"messages": [response]}
+
+
+def extract_user_request(state: dict) -> str:
+    """从 state 中提取用户原始请求文本。"""
+    messages = state.get("messages", [])
+    if not messages:
+        return ""
+    # 找最后一条用户消息（当前轮次的输入）
+    for msg in reversed(messages):
+        if isinstance(msg, tuple) and msg[0] == "user":
+            return msg[1]
+        if hasattr(msg, "type") and msg.type == "human":
+            return msg.content
+    # fallback: 第一条消息
+    first = messages[0]
+    if isinstance(first, tuple):
+        return first[1]
+    return getattr(first, "content", str(first))
 
 
 def parse_json(text: str):

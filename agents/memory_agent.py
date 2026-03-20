@@ -8,7 +8,7 @@ from config import EPISODIC_DB_PATH, EPISODIC_SEARCH_LIMIT, STRATEGY_STORE_PATH
 
 class MemoryAgent(BaseAgent):
     def __init__(self, short_term: ShortTermMemory = None):
-        super().__init__(name="Memory", system_prompt="你是记忆管理专家。")
+        super().__init__(name="Memory", system_prompt="你是记忆管理专家。", use_messages=False)
         self.short_term = short_term or ShortTermMemory()
         self.long_term = LongTermMemory()
         self.episodic = EpisodicMemory(db_path=EPISODIC_DB_PATH)

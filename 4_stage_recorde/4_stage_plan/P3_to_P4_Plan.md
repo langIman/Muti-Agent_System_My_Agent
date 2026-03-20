@@ -55,4 +55,12 @@
 
 ---
 
+## 实施状态
+
+| 优化项 | 状态 | 修改文件 |
+|--------|------|----------|
+| 优化 1：去除无效 messages 历史注入 | ✅ 已完成 | `agents/base.py`, `agents/planner.py`, `agents/learner.py`, `agents/memory_agent.py` |
+| 优化 2：Perception 感知工具升级 | ✅ 已完成 | `agents/perception.py` |
+| 优化 3：Agent 严格解耦 | ✅ 已完成 | `agents/perception.py`, `agents/base.py` |
+
 > 后续优化方向持续补充...

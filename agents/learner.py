@@ -1,4 +1,5 @@
-from agents.base import BaseAgent, parse_json, agent_log
+import json
+from agents.base import BaseAgent, parse_json, agent_log, extract_user_request
 from memory.episodic import EpisodicMemory
 from learning.strategy_store import StrategyStore
 from learning.prompt_optimizer import PromptOptimizer
@@ -27,6 +28,7 @@ class LearnerAgent(BaseAgent):
                 "- strategy 只提取真正有复用价值的策略，普通任务可以为空字符串\n"
                 "- prompt_patch 只在确实发现 prompt 有明显缺陷时才填写，否则不包含该字段"
             ),
+            use_messages=True,  # 需要通过 placeholder 传入定制的 messages
         )
         self.memory = memory_agent
         self.episodic = EpisodicMemory(db_path=EPISODIC_DB_PATH)
@@ -36,7 +38,20 @@ class LearnerAgent(BaseAgent):
     def __call__(self, state):
         agent_log("Learner", "分析执行过程，提取经验...")
 
-        result = self.chain.invoke(state)
+        # 构建干净的消息 — 只注入执行上下文，不注入完整对话历史
+        user_request = extract_user_request(state)
+        plan = state.get("plan", [])
+        tool_results = state.get("tool_results", [])
+
+        learn_messages = [
+            ("user",
+             f"请分析以下任务的执行过程并提取经验：\n\n"
+             f"**用户请求**: {user_request}\n\n"
+             f"**执行计划**: {json.dumps(plan, ensure_ascii=False, default=str)}\n\n"
+             f"**执行结果**: {json.dumps(tool_results, ensure_ascii=False, default=str)}")
+        ]
+
+        result = self.chain.invoke({**state, "messages": learn_messages})
         lessons = parse_json(result.content)
 
         # 兼容 LLM 返回 list 或 dict 格式

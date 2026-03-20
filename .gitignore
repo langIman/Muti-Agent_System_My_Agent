@@ -1,4 +1,6 @@
 # Python 字节码缓存
+agents/__pycache__/
+
 __pycache__/
 *.pyc
 *.pyo
@@ -15,3 +17,5 @@ data/strategies.json
 
 # 环境变量
 .env*
+
+

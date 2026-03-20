@@ -1,5 +1,4 @@
-import json
-from agents.base import BaseAgent, parse_json, agent_log
+from agents.base import BaseAgent, parse_json, agent_log, extract_user_request
 
 
 class PlannerAgent(BaseAgent):
@@ -11,7 +10,7 @@ class PlannerAgent(BaseAgent):
                 "## 规则\n"
                 "1. 输出 JSON 数组: [{{\"step\": 1, \"action\": \"...\", \"tool\": \"...\", \"params\": {{...}}}}]\n"
                 "2. 每步必须是可执行的原子操作。如果任务简单可以只有一步。\n"
-                "3. **尽可能一次性生成完整的计划**：包含所有必要的步骤（如找路径 -> 读内容 -> 写入修改）。只在“必须先拿到前序结果，由于参数完全未知而无法编写下一步”的极端情况下，才允许只生成 1 步并等待结果。\n"
+                "3. **尽可能一次性生成完整的计划**：包含所有必要的步骤（如找路径 -> 读内容 -> 写入修改）。只在\u201c必须先拿到前序结果，由于参数完全未知而无法编写下一步\u201d的极端情况下，才允许只生成 1 步并等待结果。\n"
                 "4. **澄清规则**：只有当用户的指令**完全无法理解或存在严重歧义导致无法开始任何行动**时，才使用 `reply_user` 向用户提问澄清。如果指令的意图是清晰的，即使缺少部分细节（如具体文件路径），你也应该先通过 `list_directory`、`find_file` 等工具自主探索和推断，而不是直接问用户。\n"
                 "5. 对于复杂的修改文件任务，典型流程是: find_file 找路径 → read_file 读内容 → write_file 写入内容。\n"
                 "6. 🏁**任务结束判定**🏁：如果你确认用户的原始指令已经**完全执行成功、没有任何遗漏**（比如文件已经真正被修改了），你**必须**生成1步计划，使用 `task_complete` 工具结束整个会话！\n\n"
@@ -33,19 +32,40 @@ class PlannerAgent(BaseAgent):
                 "## 🚨 绝对规则\n"
                 "**每个计划的最后一步必须是 `reply_user` 或 `task_complete`**。没有例外。如果你的计划最后一步不是这两个工具之一，系统会陷入死循环。\n"
             ),
+            use_messages=True,  # 需要通过 placeholder 传入定制的 messages
         )
 
     def __call__(self, state):
-        # 将 context 和 memory 注入 prompt
         context_str = str(state.get("context", {}))
         memory_str = state.get("memory_result", "无相关记忆")
-        extra_msg = ("user", f"[上下文]: {context_str}\n[相关记忆]: {memory_str}\n请生成执行计划。")
+        user_request = extract_user_request(state)
 
-        agent_log("Planner", "任务规划中...", f"上下文: {context_str[:200]}\n记忆: {memory_str[:200]}")
+        agent_log("Planner", "任务规划中...", f"用户请求: {user_request[:200]}\n记忆: {memory_str[:200]}")
+
+        # 构建干净的消息 — 只注入 Planner 真正需要的信息，不注入完整对话历史
+        plan_messages = [
+            ("user", f"用户请求: {user_request}\n\n[感知上下文]: {context_str}\n[相关记忆]: {memory_str}"),
+        ]
+
+        # 如果是 replan，注入前面步骤的执行结果
+        prev_results = state.get("tool_results", [])
+        if prev_results:
+            parts = []
+            for tr in prev_results:
+                tool_name = tr.get("tool", "unknown")
+                result_text = tr.get("result", tr.get("content", ""))
+                if result_text:
+                    parts.append(f"[步骤{tr['step']+1}][{tool_name}] 结果: {str(result_text)[:2000]}")
+            if parts:
+                plan_messages.append(("user", f"[前面步骤的执行结果]:\n" + "\n".join(parts) + "\n\n请根据以上结果重新规划后续步骤。"))
+            else:
+                plan_messages.append(("user", "请生成执行计划。"))
+        else:
+            plan_messages.append(("user", "请生成执行计划。"))
 
         result = self.chain.invoke({
             **state,
-            "messages": state["messages"] + [extra_msg],
+            "messages": plan_messages,
         })
         plan = parse_json(result.content)
         if isinstance(plan, dict):
